@@ -1,4 +1,3 @@
-# na podstawie przykładu: https://pypi.org/project/pygad/1.0.18/
 import logging
 import pygad
 import numpy
@@ -8,35 +7,65 @@ import os
 import datetime
 
 num_genes = 2
+bits_per_gene = 20
+total_bits = num_genes * bits_per_gene
+gene_type = int  # Can be float or int
+
 func = bf.Hypersphere(n_dimensions=num_genes)
+
+def decode_individual(individual, low=-5, high=5):
+    decoded = []
+    for i in range(num_genes):
+        start = i * bits_per_gene
+        end = start + bits_per_gene
+        gene_bits = individual[start:end]
+        gene_int = 0
+        for bit in gene_bits:
+            gene_int = (gene_int << 1) | int(bit)
+
+        max_int = (2 ** bits_per_gene) - 1
+        gene_float = (gene_int / max_int) * (high - low) + low
+        decoded.append(gene_float)
+
+    return decoded
 
 
 def fitness_func(ga_instance, solution, solution_idx):
-    fitness = func(solution)
-    return 1. / fitness
+    if gene_type == int:
+        ind = decode_individual(solution)
+    else:
+        ind = solution
+    fitness = func(ind)
+    return -fitness
 
+
+logger_name = 'logfile.txt'
+logger = logging.getLogger(logger_name)
+if not logger.hasHandlers():
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    logger.addHandler(console_handler)
 
 fitness_function = fitness_func
 num_generations = 100
 sol_per_pop = 80
 num_parents_mating = 50
-boundary = func.suggested_bounds()
-init_range_low = 0
-init_range_high = 2
-gene_type = float
 mutation_num_genes = 1
 
-
-
-level = logging.DEBUG
-name = 'logfile.txt'
-logger = logging.getLogger(name)
-logger.setLevel(level)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-console_format = logging.Formatter('%(message)s')
-console_handler.setFormatter(console_format)
-logger.addHandler(console_handler)
+if gene_type == int:
+    pygad_num_genes = total_bits
+    init_range_low = 0
+    init_range_high = 2
+    random_mutation_min_val = 0
+    random_mutation_max_val = 1
+else:
+    pygad_num_genes = num_genes
+    init_range_low = -5
+    init_range_high = 5
+    random_mutation_min_val = -0.5
+    random_mutation_max_val = 0.5
 
 objective_best = []
 objective_mean = []
@@ -45,77 +74,98 @@ gen_results = dict()
 
 
 def on_generation(ga_instance):
-    ga_instance.logger.info("Generation = {generation}".format(generation=ga_instance.generations_completed))
-    solution, solution_fitness, solution_idx = ga_instance.best_solution(
-        pop_fitness=ga_instance.last_generation_fitness)
-    ga_instance.logger.info("Best    = {fitness}".format(fitness=1. / solution_fitness))
-    ga_instance.logger.info("Individual    = {solution}".format(solution=repr(solution)))
+    generation = ga_instance.generations_completed
+    logger.info(f"Generation = {generation}")
 
-    tmp = [1. / x for x in ga_instance.last_generation_fitness]
+    solution, _, solution_idx = ga_instance.best_solution(
+        pop_fitness=ga_instance.last_generation_fitness
+    )
 
-    ga_instance.logger.info("Min    = {min}".format(min=numpy.min(tmp)))
-    ga_instance.logger.info("Max    = {max}".format(max=numpy.max(tmp)))
-    ga_instance.logger.info("Average    = {average}".format(average=numpy.average(tmp)))
-    ga_instance.logger.info("Std    = {std}".format(std=numpy.std(tmp)))
-    ga_instance.logger.info("\r\n")
+    if gene_type == int:
+        decoded_solution = decode_individual(solution)
+    else:
+        decoded_solution = solution
 
-    objective_best.append(numpy.min(tmp))
-    objective_mean.append(numpy.mean(tmp))
-    objective_std.append(numpy.std(tmp))
-    gen_results[ga_instance.generations_completed] = {
-        "best": numpy.min(tmp),
-        "mean": numpy.mean(tmp),
-        "std": numpy.std(tmp),
-        "max": numpy.max(tmp),
-        "min": numpy.min(tmp),
-        "individual": repr(solution),
-        "value": 1. / solution_fitness
+    best_objective = -fitness_func(ga_instance, solution, solution_idx)
+    logger.info(f"Best = {best_objective}")
+    logger.info(f"Individual = {decoded_solution}")
+
+    objectives = []
+    for individual in ga_instance.population:
+        obj_val = -fitness_func(ga_instance, individual, 0)
+        objectives.append(obj_val)
+
+    min_val = numpy.min(objectives)
+    max_val = numpy.max(objectives)
+    mean_val = numpy.mean(objectives)
+    std_val = numpy.std(objectives)
+
+    logger.info(f"Min = {min_val}")
+    logger.info(f"Max = {max_val}")
+    logger.info(f"Average = {mean_val}")
+    logger.info(f"Std = {std_val}\n")
+
+    objective_best.append(min_val)
+    objective_mean.append(mean_val)
+    objective_std.append(std_val)
+    gen_results[generation] = {
+        "best": min_val,
+        "mean": mean_val,
+        "std": std_val,
+        "max": max_val,
+        "min": min_val,
+        "individual": decoded_solution,
+        "value": best_objective
     }
 
 
-# Genetic Algorithm parameters - Adjust these parameters
-parent_selection_type = "tournament" # "random", "rws", "tournament"
-crossover_type = "single_point" # "single_point", "two_points", "uniform"
-mutation_type = "random" # "random", "swap"
+selection_type = "tournament" # "random" or "rws", or "tournament"
+crossover_type = "single_point" # "single_point" or "two_points" or "uniform"
+mutation_type = "random" # "random" or "swap"
 
-
-ga_instance = pygad.GA(num_generations=num_generations,
-                       sol_per_pop=sol_per_pop,
-                       num_parents_mating=num_parents_mating,
-                       num_genes=num_genes,
-                       fitness_func=fitness_func,
-                       init_range_low=init_range_low,
-                       init_range_high=init_range_high,
-                       mutation_num_genes=mutation_num_genes,
-                       parent_selection_type=parent_selection_type,
-                       crossover_type=crossover_type,
-                       mutation_type=mutation_type,
-                       keep_elitism=1,
-                       K_tournament=3,
-                       random_mutation_max_val=10,
-                       random_mutation_min_val=-10,
-                       logger=logger,
-                       on_generation=on_generation,
-                       parallel_processing=['thread', 4],
-                       gene_type=gene_type
-                       )
-
+ga_instance = pygad.GA(
+    num_generations=num_generations,
+    sol_per_pop=sol_per_pop,
+    num_parents_mating=num_parents_mating,
+    num_genes=pygad_num_genes,
+    fitness_func=fitness_func,
+    init_range_low=init_range_low,
+    init_range_high=init_range_high,
+    mutation_num_genes=mutation_num_genes,
+    parent_selection_type=selection_type,
+    crossover_type=crossover_type,
+    mutation_type=mutation_type,
+    keep_elitism=1,
+    K_tournament=3,
+    random_mutation_min_val=random_mutation_min_val,
+    random_mutation_max_val=random_mutation_max_val,
+    logger=logger,
+    on_generation=on_generation,
+    parallel_processing=['thread', 4],
+    gene_type=gene_type
+)
 
 
 if __name__ == "__main__":
     ga_instance.run()
 
-    best = ga_instance.best_solution()
-    solution, solution_fitness, solution_idx = ga_instance.best_solution()
-    print("Parameters of the best solution : {solution}".format(solution=solution))
-    print("Fitness value of the best solution = {solution_fitness}".format(solution_fitness=1. / solution_fitness))
-    print("Minimum value: ", min(func.minimum()))
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    results_dir = os.path.join(os.path.dirname(__file__), "results", timestamp+f"_{parent_selection_type}_{crossover_type}_{mutation_type}")
+    solution, solution_fitness, _ = ga_instance.best_solution()
+    if gene_type == int:
+        decoded_solution = decode_individual(solution)
+    else:
+        decoded_solution = solution
 
+    print("Parameters of the best solution:", decoded_solution)
+    print("Fitness value of the best solution =", -solution_fitness)
+    print("Minimum value: ", min(func.minimum()))
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    results_dir = os.path.join(os.path.dirname(__file__), "results",
+                               f"{timestamp}_tournament_single_point_random_{repr(gene_type)}")
     os.makedirs(results_dir, exist_ok=True)
 
-    ga_instance.best_solutions_fitness = [1. / x for x in ga_instance.best_solutions_fitness]
+    ga_instance.best_solutions_fitness = [-x for x in ga_instance.best_solutions_fitness]
+
     plt.figure()
     plt.plot(ga_instance.best_solutions_fitness)
     plt.xlabel('Generation')
@@ -139,7 +189,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(generations, objective_std, label='Std', color='red')
     plt.xlabel('Generation')
-    plt.ylabel('Standard deviation of objective function value')
+    plt.ylabel('Standard deviation')
     plt.title('Standard Deviation per Generation')
     plt.legend()
     plt.grid(True)
@@ -152,6 +202,3 @@ if __name__ == "__main__":
         for gen, vals in gen_results.items():
             f.write(
                 f"{gen};{vals['best']};{vals['mean']};{vals['std']};{vals['max']};{vals['min']};{vals['individual']};{vals['value']}\n")
-
-
-
