@@ -9,7 +9,7 @@ import datetime
 num_genes = 2
 bits_per_gene = 20
 total_bits = num_genes * bits_per_gene
-gene_type = int  # Can be float or int
+gene_type = float  # Can be float or int
 
 func = bf.Hypersphere(n_dimensions=num_genes)
 
@@ -29,15 +29,15 @@ def decode_individual(individual, low=-5, high=5):
 
     return decoded
 
-
 def fitness_func(ga_instance, solution, solution_idx):
     if gene_type == int:
         ind = decode_individual(solution)
     else:
         ind = solution
-    fitness = func(ind)
-    return -fitness
 
+    objective = func(ind)
+    fitness = 1 / (1 + objective)
+    return fitness
 
 logger_name = 'logfile.txt'
 logger = logging.getLogger(logger_name)
@@ -72,7 +72,6 @@ objective_mean = []
 objective_std = []
 gen_results = dict()
 
-
 def on_generation(ga_instance):
     generation = ga_instance.generations_completed
     logger.info(f"Generation = {generation}")
@@ -86,13 +85,17 @@ def on_generation(ga_instance):
     else:
         decoded_solution = solution
 
-    best_objective = -fitness_func(ga_instance, solution, solution_idx)
+    best_objective = func(decoded_solution)
     logger.info(f"Best = {best_objective}")
     logger.info(f"Individual = {decoded_solution}")
 
     objectives = []
     for individual in ga_instance.population:
-        obj_val = -fitness_func(ga_instance, individual, 0)
+        if gene_type == int:
+            ind = decode_individual(individual)
+        else:
+            ind = individual
+        obj_val = func(ind)
         objectives.append(obj_val)
 
     min_val = numpy.min(objectives)
@@ -145,7 +148,6 @@ ga_instance = pygad.GA(
     gene_type=gene_type
 )
 
-
 if __name__ == "__main__":
     ga_instance.run()
 
@@ -155,8 +157,11 @@ if __name__ == "__main__":
     else:
         decoded_solution = solution
 
+    final_objective = func(decoded_solution)
+
     print("Parameters of the best solution:", decoded_solution)
-    print("Fitness value of the best solution =", -solution_fitness)
+    print("Fitness value of the best solution =", solution_fitness)
+    print("Objective function value of best solution =", final_objective)
     print("Minimum value: ", min(func.minimum()))
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -164,13 +169,11 @@ if __name__ == "__main__":
                                f"{timestamp}_{selection_type}_{crossover_type}_{mutation_type}_{repr(gene_type)}")
     os.makedirs(results_dir, exist_ok=True)
 
-    ga_instance.best_solutions_fitness = [-x for x in ga_instance.best_solutions_fitness]
-
     plt.figure()
-    plt.plot(ga_instance.best_solutions_fitness)
+    plt.plot(objective_best)
     plt.xlabel('Generation')
     plt.ylabel('Objective function value')
-    plt.title('Objective Function Value per Generation')
+    plt.title('Best Objective Value per Generation')
     plt.savefig(os.path.join(results_dir, "fitness.png"))
     plt.show()
 
