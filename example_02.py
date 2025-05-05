@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     results_dir = os.path.join(os.path.dirname(__file__), "results",
-                               f"{timestamp}_tournament_single_point_random_{repr(gene_type)}")
+                               f"{timestamp}_{selection_type}_{crossover_type}_{mutation_type}_{repr(gene_type)}")
     os.makedirs(results_dir, exist_ok=True)
 
     ga_instance.best_solutions_fitness = [-x for x in ga_instance.best_solutions_fitness]
